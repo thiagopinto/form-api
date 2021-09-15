@@ -140,4 +140,21 @@ class UserController extends Controller
     {
     }
 
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param int $id
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function checkEmail($email)
+    {
+        $user = User::where('email', $email)->first();
+        if ($user == null) {
+            return false;
+        }
+        return true;
+    }
+
+
 }

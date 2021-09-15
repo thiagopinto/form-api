@@ -50,6 +50,7 @@ Route::prefix('v1')->group(
                 
                 Route::get('role', [RoleController::class, 'index']);
                 Route::resource('user', UserController::class);
+                Route::get('users/check-email/{email}', [UserController::class, 'checkEmail']);
             }
         );
 
