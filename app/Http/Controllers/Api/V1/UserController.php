@@ -72,6 +72,11 @@ class UserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
+        foreach ($request->roles as $role) {
+            $user->roles()->attach($role);
+        }
+        $user->save();
+
         event(new Registered($user));
     }
 
@@ -121,7 +126,7 @@ class UserController extends Controller
 
         foreach ($request->roles as $role) {
             $user->roles()->detach($role);
-            $user->roles()->attach($role['id']);
+            $user->roles()->attach($role);
         }
         $user->save();
         $user = User::with(['roles'])->find($id);
