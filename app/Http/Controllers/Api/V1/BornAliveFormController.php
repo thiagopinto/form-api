@@ -206,18 +206,43 @@ class BornAliveFormController extends Controller
             ini_set('max_input_time', -1);
             ini_set('max_input_time', -1);
             for ($i = $request->start; $i <= $request->end; $i++) {
+                if (!BornAliveForm::where('number', '=', $i)->exists()) {
+                    $form = new BornAliveForm();
+                    $form->number = $i;
+                    $form->cnes_code = $request->cnes_code;
+                    $form->status = 1;
+                    $form->save();
+                } else {
+                    return response()->json(
+                        [
+                            'status' => 'Error',
+                            'message' => 'duplicate record ' . $i,
+                            'data' => null,
+                            'code' => 500,
+                        ],
+                        500
+                    )->header('Content-Type', 'text/plain');
+                }
+
+            }
+        } else {
+            if (!BornAliveForm::where('number', '=', $request->start)->exists()) {
                 $form = new BornAliveForm();
-                $form->number = $i;
+                $form->number = $request->start;
                 $form->cnes_code = $request->cnes_code;
                 $form->status = 1;
                 $form->save();
+            } else {
+                return response()->json(
+                    [
+                        'status' => 'Error',
+                        'message' => 'duplicate record ' . $request->start,
+                        'data' => null,
+                        'code' => 500,
+                    ],
+                    500
+                )->header('Content-Type', 'text/plain');
             }
-        } else {
-            $form = new BornAliveForm();
-            $form->number = $request->start;
-            $form->cnes_code = $request->cnes_code;
-            $form->status = 1;
-            $form->save();
         }
 
         return response()->json(['messages' => 'create forms.'], 201);
@@ -335,4 +360,55 @@ class BornAliveFormController extends Controller
     {
         return BornAliveForm::where('status', $status)->count();
     }
+
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function lastSend(Request $request, $cnes_code)
+    {
+        return BornAliveForm::where('cnes_code', $cnes_code)->orderBy('updated_at', 'DESC')->first();
+    }
+
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function reversal(Request $request, $id)
+    {
+        $form = BornAliveForm::find($id);
+
+        if ($form->range_number_end != null) {
+            $start = $form->range_number_start;
+            $end = $form->range_number_end;
+            $forms = [];
+
+            for ($i=$start; $i <= $end; $i++) { 
+                $form = BornAliveForm::where('number', $i)->first();
+                $form->cnes_code = null;
+                $form->range_number_start = null;
+                $form->range_number_end = null;
+                $form->responsible = null;
+                $form->status = 1;
+                $form->save();
+                $forms[] = $form;
+            }
+            return $forms;
+        } else {
+            $form->cnes_code = null;
+            $form->range_number_start = null;
+            $form->range_number_end = null;
+            $form->responsible = null;
+            $form->status = 1;
+            $form->save();
+            return $form;
+        }
+        
+    }
+
+
 }

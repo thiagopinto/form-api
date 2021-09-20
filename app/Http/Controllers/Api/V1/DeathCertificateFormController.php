@@ -205,18 +205,42 @@ class DeathCertificateFormController extends Controller
             ini_set('max_input_time', -1);
             ini_set('max_input_time', -1);
             for ($i = $request->start; $i <= $request->end; $i++) {
-                $form = new DeathCertificateForm();
-                $form->number = $i;
-                $form->cnes_code = $request->cnes_code;
-                $form->status = 1;
-                $form->save();
+                if (!DeathCertificateForm::where('number', '=', $i)->exists()) {
+                    $form = new DeathCertificateForm();
+                    $form->number = $i;
+                    $form->cnes_code = $request->cnes_code;
+                    $form->status = 1;
+                    $form->save();
+                } else {
+                    return response()->json(
+                        [
+                            'status' => 'Error',
+                            'message' => 'duplicate record ' . $i,
+                            'data' => null,
+                            'code' => 500,
+                        ],
+                        500
+                    )->header('Content-Type', 'text/plain');
+                }
             }
         } else {
+            if (!DeathCertificateForm::where('number', '=', $request->start)->exists()) {
             $form = new DeathCertificateForm();
             $form->number = $request->start;
             $form->cnes_code = $request->cnes_code;
             $form->status = 1;
             $form->save();
+            } else {
+                return response()->json(
+                    [
+                        'status' => 'Error',
+                        'message' => 'duplicate record ' . $request->start,
+                        'data' => null,
+                        'code' => 500,
+                    ],
+                    500
+                )->header('Content-Type', 'text/plain');
+            }
         }
 
         return response()->json(['messages' => 'create forms.'], 201);
@@ -335,4 +359,46 @@ class DeathCertificateFormController extends Controller
         return DeathCertificateForm::where('status', $status)->count();
     }
 
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function lastSend(Request $request, $cnes_code)
+    {
+        return DeathCertificateForm::where('cnes_code', $cnes_code)->orderBy('updated_at', 'DESC')->first();
+    }
+
+        /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function reversal(Request $request, $id)
+    {
+        $form = DeathCertificateForm::find($id);
+
+        if ($form->range_number_end != null) {
+            $start = $form->range_number_start;
+            $end = $form->range_number_end;
+
+            for ($i=$start; $i <= $end; $i++) { 
+                $form = DeathCertificateForm::where('number', $i)->first();
+                $form->cnes_code = null;
+                $form->range_number_start = null;
+                $form->range_number_end = null;
+                $form->responsible = null;
+                $form->status = 1;
+                $form->save();
+            }
+        } else {
+            $form->cnes_code = null;
+            $form->range_number_start = null;
+            $form->range_number_end = null;
+            $form->responsible = null;
+            $form->status = 1;
+            $form->save();
+        }
+        
+    }
 }

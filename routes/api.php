@@ -38,7 +38,9 @@ Route::prefix('v1')->group(
                 Route::get('born_alive_form/receipt/{id?}', [BornAliveFormController::class, 'receipt']);
                 Route::get('born_alive_form/report', [BornAliveFormController::class, 'indexReport']);
                 Route::get('born_alive_form/count/{status?}', [BornAliveFormController::class, 'count']);
-
+                Route::get('born_alive_form/last-send/{cnes_code?}', [BornAliveFormController::class, 'lastSend']);
+                Route::patch('born_alive_form/reversal/{id?}', [BornAliveFormController::class, 'reversal']);
+                
 
                 Route::get('death_certificate_form', [DeathCertificateFormController::class, 'index']);
                 Route::post('death_certificate_form', [DeathCertificateFormController::class, 'store']);
@@ -47,7 +49,9 @@ Route::prefix('v1')->group(
                 Route::get('death_certificate_form/receipt/{id?}', [DeathCertificateFormController::class, 'receipt']);
                 Route::get('death_certificate_form/report', [DeathCertificateFormController::class, 'indexReport']);
                 Route::get('death_certificate_form/count/{status?}', [DeathCertificateFormController::class, 'count']);
-                
+                Route::get('death_certificate_form/last-send/{cnes_code?}', [DeathCertificateFormController::class, 'lastSend']);
+                Route::patch('death_certificate_form/reversal/{id?}', [DeathCertificateFormController::class, 'reversal']);
+
                 Route::get('role', [RoleController::class, 'index']);
                 Route::resource('user', UserController::class);
                 Route::get('users/check-email/{email}', [UserController::class, 'checkEmail']);
