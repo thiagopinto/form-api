@@ -141,8 +141,21 @@ class UserController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
+        $requestUser = $request->user();
+
+        $user = User::with(['roles'])->find($id);
+
+        if (!Gate::authorize('is-admin', $requestUser, $user)) {
+            return response()->json(['error' => 'Not authorized.'], 403);
+        }
+
+        foreach ($user->roles as $role) {
+            $user->roles()->detach($role);
+        }
+
+        $user->delete();
     }
 
     /**
