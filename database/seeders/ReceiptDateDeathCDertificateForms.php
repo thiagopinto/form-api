@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\models\DeathCertificateForm;
+use App\Models\DeathCertificateForm;
 use DateTime;
 
 class ReceiptDateDeathCDertificateForms extends Seeder

@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\models\BornAliveForm;
+use App\Models\BornAliveForm;
 use DateTime;
 
 class ReceiptDateBornAliveForms extends Seeder
