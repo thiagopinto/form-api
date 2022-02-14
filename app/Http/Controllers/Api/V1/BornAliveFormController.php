@@ -8,7 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use \PDF;
+use PDF;
+use DateTime;
 
 class BornAliveFormController extends Controller
 {
@@ -29,23 +30,29 @@ class BornAliveFormController extends Controller
             $perPage = 5;
         }
 
-        $status = explode(',', $request->status);
+        $forms = BornAliveForm::leftJoin(
+            'health_units',
+            'born_alive_forms.cnes_code',
+            '=',
+            'health_units.cnes_code'
+        )->select(
+            'born_alive_forms.*',
+            'health_units.alias_company_name AS alias_company_name',
+        )->when($request->has('status'), function ($query) use ($request) {
+            $status = explode(',', $request->status);
 
-        if ($request->has('start') && $request->has('end')) {
-
-            $start = $request->query('start');
-            $end = $request->query('end');
-
-            if ($request->query('search')) {
-                $search = $request->query('search');
-                $forms = BornAliveForm::leftJoin(
-                    'health_units', 'born_alive_forms.cnes_code', '=', 'health_units.cnes_code'
-                )->select(
-                    'born_alive_forms.*',
-                    'health_units.alias_company_name AS alias_company_name',
-                )->whereIn(
-                    'status', $status
-                )->whereRaw(
+            $query->whereIn('status', $status);
+        })->when(($request->has('start') && $request->has('end')), function ($query) use ($request) {
+            $start = $request->start;
+            $end = $request->end;
+            $query->whereBetween(
+                'event_date',
+                [$start, $end]
+            );
+        })->when($request->has('search'), function ($query) use ($request) {
+            $query->where(function ($query) use ($request) {
+                $search = $request->search;
+                $query->orWhereRaw(
                     "left(born_alive_forms.number::text, length('{$search}')) ilike unaccent('%{$search}%')"
                 )->orWhereRaw(
                     "left(born_alive_forms.cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
@@ -53,54 +60,12 @@ class BornAliveFormController extends Controller
                     "born_alive_forms.name ilike unaccent('%{$search}%')"
                 )->orWhereRaw(
                     "health_units.alias_company_name ilike unaccent('%{$search}%')"
-                )->whereBetween(
-                    'event_date', [$start, $end]
-                )->orderBy('id')->paginate($perPage);
-            } else {
-                $forms = BornAliveForm::leftJoin(
-                    'health_units', 'born_alive_forms.cnes_code', '=', 'health_units.cnes_code'
-                )->select(
-                    'born_alive_forms.*',
-                    'health_units.alias_company_name AS alias_company_name',
-                )->whereIn(
-                    'status', $status
-                )->whereBetween(
-                    'event_date', [$start, $end]
-                )->orderBy('id')->paginate($perPage);
-            }
+                );
+            });
+        })->paginate($perPage);
 
-        } else {
-
-            if ($request->query('search')) {
-                $search = $request->query('search');
-                $forms = BornAliveForm::leftJoin(
-                    'health_units', 'born_alive_forms.cnes_code', '=', 'health_units.cnes_code'
-                )->select(
-                    'born_alive_forms.*',
-                    'health_units.alias_company_name AS alias_company_name',
-                )->whereIn('status', $status)
-                    ->whereRaw(
-                        "left(born_alive_forms.number::text, length('{$search}')) ilike unaccent('%{$search}%')"
-                    )->orWhereRaw(
-                    "left(born_alive_forms.cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
-                )->orWhereRaw(
-                    "born_alive_forms.name ilike unaccent('%{$search}%')"
-                )->orWhereRaw(
-                    "health_units.alias_company_name ilike unaccent('%{$search}%')"
-                )->orderBy('id')->paginate($perPage);
-            } else {
-                $forms = BornAliveForm::leftJoin(
-                    'health_units', 'born_alive_forms.cnes_code', '=', 'health_units.cnes_code'
-                )->select(
-                    'born_alive_forms.*',
-                    'health_units.alias_company_name AS alias_company_name',
-                )->whereIn('status', $status)->orderBy('id')->paginate($perPage);
-            }
-
-        }
 
         return $forms;
-
     }
 
     /**
@@ -120,66 +85,83 @@ class BornAliveFormController extends Controller
             $perPage = 5;
         }
 
-        if ($request->query('search')) {
-            $search = $request->query('search');
-            $forms = BornAliveForm::join(
-                'health_units', 'born_alive_forms.cnes_code', '=', 'health_units.cnes_code'
-            )->select(
-                'born_alive_forms.cnes_code',
-                DB::raw('count("born_alive_forms"."cnes_code") AS count'),
-                'health_units.alias_company_name AS name',
-                'health_units.longitude AS longitude',
-                'health_units.latitude AS latitude',
-                'health_units.stock_form_alive AS stock_form_alive',
-                'health_units.stock_form_death AS stock_form_death'
+        $tableName = 'born_alive_forms';
 
-            )->whereNotNull(
-                'born_alive_forms.cnes_code'
-            )->where(
-                'born_alive_forms.status', '2'
-            )->whereRaw(
-                "left(born_alive_forms.cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
-            )->orWhereRaw(
-                "health_units.alias_company_name ilike unaccent('%{$search}%')"
-            )->groupBy(
-                'born_alive_forms.cnes_code',
-                'health_units.alias_company_name',
-                'health_units.longitude',
-                'health_units.latitude',
-                'health_units.stock_form_alive',
-                'health_units.stock_form_death'
-            )->orderBy(
-                'born_alive_forms.cnes_code'
-            )->paginate($perPage);
-        } else {
-            $forms = BornAliveForm::join(
-                'health_units', 'born_alive_forms.cnes_code', '=', 'health_units.cnes_code'
-            )->select(
-                'born_alive_forms.cnes_code',
-                DB::raw('count("born_alive_forms"."cnes_code") AS count'),
-                'health_units.alias_company_name AS name',
-                'health_units.longitude AS longitude',
-                'health_units.latitude AS latitude',
-                'health_units.stock_form_alive AS stock_form_alive',
-                'health_units.stock_form_death AS stock_form_death'
-            )->whereNotNull(
-                'born_alive_forms.cnes_code'
-            )->where(
-                'born_alive_forms.status', '2'
-            )->groupBy(
-                'born_alive_forms.cnes_code',
-                'health_units.alias_company_name',
-                'health_units.longitude',
-                'health_units.latitude',
-                'health_units.stock_form_alive',
-                'health_units.stock_form_death'
-            )->orderBy(
-                'born_alive_forms.cnes_code'
-            )->paginate($perPage);
+        //"\"{$tableName}\".{$per} as code, {$operation}({$rating}) as {$operation}, ds_ocupacao as name"
+
+        $forms = BornAliveForm::select(
+            "{$tableName}.cnes_code as cnes_code",
+            'health_units.alias_company_name as name',
+            'health_units.longitude as longitude',
+            'health_units.latitude as latitude',
+            'health_units.stock_form_alive as stock_form_alive',
+            'health_units.stock_form_death as stock_form_death',
+        )->selectRaw(
+            "count({$tableName}.cnes_code) AS received"
+        )->selectRaw(
+            "count(*) filter (where status = 3) as used"
+        )->selectRaw(
+            "count(*) filter (where status = 4) as canceled"
+        )->selectRaw(
+            "count(*) filter (where status = 2) as stock"
+        )->join(
+            'health_units',
+            "{$tableName}.cnes_code",
+            '=',
+            'health_units.cnes_code'
+        )->whereNotNull(
+            "{$tableName}.cnes_code"
+        )->when(($request->has('start') && $request->has('end')), function ($query) use ($request, $tableName) {
+
+            $start = $request->start;
+            $end = $request->end;
+
+            $query->whereBetween(
+                "{$tableName}.updated_at",
+                [$start, $end]
+            );
+        })->when($request->has('search'), function ($query) use ($request) {
+
+            $query->where(function ($query) use ($request) {
+                $search = $request->get('search');
+                return $query->orWhereRaw(
+                    "left(health_units.cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
+                )->orWhereRaw(
+                    "unaccent(health_units.alias_company_name) ilike unaccent('%{$search}%')"
+                );
+            });
+        })->groupBy(
+            "{$tableName}.cnes_code",
+            'health_units.alias_company_name',
+            'health_units.longitude',
+            'health_units.latitude',
+            'health_units.stock_form_alive',
+            'health_units.stock_form_death'
+        )->orderBy(
+            "{$tableName}.cnes_code"
+        )->paginate($perPage);
+
+        foreach ($forms as $item) {
+            try {
+                $item->last_receipt = BornAliveForm::select('receipt_date')
+                    ->whereNotNull('receipt_date')
+                    ->where('cnes_code', $item->cnes_code)
+                    ->orderBy('receipt_date', 'DESC')
+                    ->first()->receipt_date;
+            } catch (\Throwable $th) {
+                $item->last_receipt = null;
+            }
+
+            if ($item->last_receipt != null) {
+                $last_receipt = new DateTime($item->last_receipt);
+                $today = new DateTime();
+                $days = $last_receipt->diff($today);
+                $item->last_receipt_day = $days->format('%a');
+            } else {
+                $item->last_receipt_day = null;
+            }
         }
-
         return $forms;
-
     }
 
     /**
@@ -198,6 +180,11 @@ class BornAliveFormController extends Controller
      */
     public function store(Request $request)
     {
+        $request->validate([
+            'start' => 'required',
+            'cnes_code' => 'required'
+        ]);
+
         if ($request->end != null) {
             if ($request->end < $request->start) {
                 return response()->json(['error' => 'final number is less than initial.'], 500);
@@ -223,7 +210,6 @@ class BornAliveFormController extends Controller
                         500
                     )->header('Content-Type', 'text/plain');
                 }
-
             }
         } else {
             if (!BornAliveForm::where('number', '=', $request->start)->exists()) {
@@ -260,17 +246,6 @@ class BornAliveFormController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
-     *
-     * @param int $id
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
-    {
-    }
-
-    /**
      * Update the specified resource in storage.
      *
      * @param int $id
@@ -279,6 +254,7 @@ class BornAliveFormController extends Controller
      */
     public function update(Request $request, $id = null)
     {
+
         if ($request->end != null) {
             if ($request->end < $request->start) {
                 return response()->json(['error' => 'final number is less than initial.'], 500);
@@ -286,6 +262,11 @@ class BornAliveFormController extends Controller
             ini_set('max_execution_time', -1);
             ini_set('max_input_time', -1);
             ini_set('max_input_time', -1);
+
+            $request->validate([
+                'cnes_code' => 'required'
+            ]);
+
             for ($i = $request->start; $i <= $request->end; $i++) {
                 $form = BornAliveForm::where('number', $i)->first();
                 $form->cnes_code = $request->cnes_code;
@@ -296,6 +277,11 @@ class BornAliveFormController extends Controller
                 $form->save();
             }
         } elseif ($request->start != null) {
+
+            $request->validate([
+                'cnes_code' => 'required'
+            ]);
+
             $form = BornAliveForm::where('number', $request->start)->first();
             $form->cnes_code = $request->cnes_code;
             $form->range_number_start = $request->start;
@@ -303,6 +289,10 @@ class BornAliveFormController extends Controller
             $form->status = 2;
             $form->save();
         } elseif ($request->name != null && $request->event_date != null) {
+
+            $request->validate([
+                'cnes_code_devolution' => 'required'
+            ]);
 
             $form = BornAliveForm::find($request->id);
             $form->name = $request->name;
@@ -325,10 +315,13 @@ class BornAliveFormController extends Controller
     public function partial_update(Request $request, $id = null)
     {
         $form = BornAliveForm::find($id);
-
+        if ($request->status == 2 ) {
+            $form->receipt_date = null;
+            $form->event_date = null;
+            $form->name = null;
+        }
         $form->status = $request->status;
         $form->save();
-
     }
 
     public function receipt(Request $request, $id)
@@ -340,15 +333,124 @@ class BornAliveFormController extends Controller
             ->where('status', '<>', '3')
             ->where('status', '<>', '4')->count();
 
-        return PDF::loadView('receipt',
+        return PDF::loadView(
+            'receipt',
             [
                 'form' => $form,
                 'countForms' => $countForms,
                 'type' => 'declaração nascido vivo',
                 'user' => $user->name,
                 'today' => $today,
-            ])->download('Documento de cessão.pdf');
+            ]
+        )->download('Documento de cessão.pdf');
         //return view('receipt');
+    }
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function report(Request $request)
+    {
+        if (!Gate::authorize('is-staff')) {
+            return response()->json(['error' => 'Not authorized.'], 403);
+        }
+
+        if ($request->has('per_page')) {
+            $perPage = $request->input('per_page');
+        } else {
+            $perPage = 5;
+        }
+
+        $tableName = 'born_alive_forms';
+
+        //"\"{$tableName}\".{$per} as code, {$operation}({$rating}) as {$operation}, ds_ocupacao as name"
+
+        $forms = BornAliveForm::select(
+            "{$tableName}.cnes_code as cnes_code",
+            'health_units.alias_company_name as name',
+            'health_units.longitude as longitude',
+            'health_units.latitude as latitude',
+            'health_units.stock_form_alive as stock_form_alive',
+            'health_units.stock_form_death as stock_form_death',
+        )->selectRaw(
+            "count({$tableName}.cnes_code) AS received"
+        )->selectRaw(
+            "count(*) filter (where status = 3) as used"
+        )->selectRaw(
+            "count(*) filter (where status = 4) as canceled"
+        )->selectRaw(
+            "count(*) filter (where status = 2) as stock"
+        )->join(
+            'health_units',
+            "{$tableName}.cnes_code",
+            '=',
+            'health_units.cnes_code'
+        )->whereNotNull(
+            "{$tableName}.cnes_code"
+        )->when(($request->has('start') && $request->has('end')), function ($query) use ($request, $tableName) {
+
+            $start = $request->start;
+            $end = $request->end;
+
+            $query->whereBetween(
+                "{$tableName}.updated_at",
+                [$start, $end]
+            );
+        })->when($request->has('search'), function ($query) use ($request) {
+
+            $query->where(function ($query) use ($request) {
+                $search = $request->get('search');
+                return $query->orWhereRaw(
+                    "left(health_units.cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
+                )->orWhereRaw(
+                    "unaccent(health_units.alias_company_name) ilike unaccent('%{$search}%')"
+                );
+            });
+        })->groupBy(
+            "{$tableName}.cnes_code",
+            'health_units.alias_company_name',
+            'health_units.longitude',
+            'health_units.latitude',
+            'health_units.stock_form_alive',
+            'health_units.stock_form_death'
+        )->orderBy(
+            "{$tableName}.cnes_code"
+        )->paginate($perPage);
+
+        foreach ($forms as $item) {
+            try {
+                $item->last_receipt = BornAliveForm::select('receipt_date')
+                    ->whereNotNull('receipt_date')
+                    ->where('cnes_code', $item->cnes_code)
+                    ->orderBy('receipt_date', 'DESC')
+                    ->first()->receipt_date;
+            } catch (\Throwable $th) {
+                $item->last_receipt = null;
+            }
+
+            if ($item->last_receipt != null) {
+                $last_receipt = new DateTime($item->last_receipt);
+                $today = new DateTime();
+                $days = $last_receipt->diff($today);
+                $item->last_receipt_day = $days->format('%a');
+            } else {
+                $item->last_receipt_day = null;
+            }
+        }
+
+        $today = date("m-d-Y");
+
+        return PDF::loadView(
+            'report',
+            [
+                'forms' => $forms,
+                'today' => $today
+
+            ]
+        )->download('Documento de cessão.pdf');
+
     }
 
     /**
@@ -387,7 +489,7 @@ class BornAliveFormController extends Controller
             $end = $form->range_number_end;
             $forms = [];
 
-            for ($i=$start; $i <= $end; $i++) { 
+            for ($i = $start; $i <= $end; $i++) {
                 $form = BornAliveForm::where('number', $i)->first();
                 $form->cnes_code = null;
                 $form->range_number_start = null;
@@ -407,8 +509,5 @@ class BornAliveFormController extends Controller
             $form->save();
             return $form;
         }
-        
     }
-
-
 }

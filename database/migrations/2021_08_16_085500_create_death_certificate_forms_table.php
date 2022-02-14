@@ -21,7 +21,7 @@ class CreateDeathCertificateFormsTable extends Migration
             $table->string('name')->nullable();
             $table->date('event_date')->nullable();
             $table->string('responsible')->nullable();
-            $table->integer('status')->comment('1 - stoque, 2 - distribuido, 3 - recebido, 4 - nula');
+            $table->integer('status')->comment('1 - estoque, 2 - distribuido, 3 - recebido, 4 - nula');
             $table->unsignedBigInteger('cnes_code')->nullable();
             $table->unsignedBigInteger('cnes_code_devolution')->nullable();
             $table->timestamps();

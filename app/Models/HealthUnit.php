@@ -10,6 +10,26 @@ class HealthUnit extends Model
 {
     use HasFactory;
 
+
+    protected $fillable = [
+        'unit_code',
+        'cnes_code',
+        'cnpj_maintainer_code',
+        'alias_company_name',
+        'company_type',
+        'ibge_state_id',
+        'ibge_city_id',
+        'address',
+        'address_number',
+        'address_complement',
+        'neighborhood',
+        'cep_code',
+        'latitude',
+        'longitude',
+        'stock_form_death',
+        'stock_form_alive'
+    ];
+
     public function geocodeAddressFull()
     {
         $city = 'Teresina';
@@ -48,7 +68,7 @@ class HealthUnit extends Model
             }
         }
 
-        
+
         if (!empty($geocodeData)
             && $geocodeData->status != 'ZERO_RESULTS'
             && isset($geocodeData->results)

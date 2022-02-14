@@ -16,45 +16,102 @@ class HealthUnitController extends Controller
     public function index(Request $request)
     {
         if ($request->has('per_page')) {
-            $perPage = $request->input('per_page');
+            $perPage = $request->get('per_page');
         } else {
             $perPage = 5;
         }
 
-        if ($request->has('search') && $request->has('per_page')) {
+        if ($request->has('per_page')) {
 
-            $search = $request->get('search');
-            $healthUnits = HealthUnit::whereRaw(
-                "left(cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
-            )->orWhereRaw(
-                "unaccent(alias_company_name) ilike unaccent('%{$search}%')"
-            )->orderBy('id')->paginate($perPage);
+            $healthUnits = HealthUnit::when($request->has('search'), function ($query) use ($request) {
 
-            return $healthUnits;
-        } elseif ($request->has('search')) {
-            $search = $request->get('search');
-            $healthUnits = HealthUnit::whereRaw(
-                "left(cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
-            )->orWhereRaw(
-                "unaccent(alias_company_name) ilike unaccent('%{$search}%')"
-            )->orderBy('id')->get();
+                $query->where(function ($query) use ($request) {
+                    $search = $request->get('search');
+                    return $query->orWhereRaw(
+                        "left(cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
+                    )->orWhereRaw(
+                        "unaccent(alias_company_name) ilike unaccent('%{$search}%')"
+                    );
+                });
 
-            return $healthUnits;
-        } elseif ($request->has('cnes_code')) {
-            $cnes_code = $request->get('cnes_code');
-            $healthUnit = HealthUnit::where(
-                'cnes_code', $cnes_code
-            )->first();
-
-            return $healthUnit;
+            })->when($request->has('cnes_code'), function ($query) use ($request) {
+                $cnes_code = $request->get('cnes_code');
+                return $query->where(
+                    'cnes_code',
+                    $cnes_code
+                );
+            })->orderBy('id')->paginate($perPage);
 
         } else {
 
-            $healthUnits = HealthUnit::orderBy('id')->paginate($perPage);
+            $healthUnits = HealthUnit::when($request->has('search'), function ($query) use ($request) {
 
-            return $healthUnits;
+                $query->where(function ($query) use ($request) {
+                    $search = $request->get('search');
+                    return $query->orWhereRaw(
+                        "left(cnes_code::text, length('{$search}')) ilike unaccent('%{$search}%')"
+                    )->orWhereRaw(
+                        "unaccent(alias_company_name) ilike unaccent('%{$search}%')"
+                    );
+                });
+
+            })->when($request->has('cnes_code'), function ($query) use ($request) {
+                $cnes_code = $request->get('cnes_code');
+                return $query->where(
+                    'cnes_code',
+                    $cnes_code
+                );
+            })->orderBy('id')->get();
         }
-        return null;
+        return $healthUnits;
+    }
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function store(Request $request)
+    {
+
+        $request->validate([
+            'unit_code' => 'required|unique:health_units',
+            'cnes_code' => 'required|unique:health_units',
+            'alias_company_name' => 'required'
+        ]);
+
+        $healthUnitRequest = $request->all();
+
+        $healthUnit = HealthUnit::create(
+            $healthUnitRequest
+        );
+
+        return response()->json(['messages' => 'Unidade dadastrada!.'], 201);
+    }
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function update(Request $request, $id)
+    {
+
+        $request->validate([
+            'unit_code' => 'required|unique:health_units',
+            'cnes_code' => 'required|unique:health_units',
+            'alias_company_name' => 'required'
+        ]);
+
+        $healthUnit = HealthUnit::find($id);
+
+        $healthUnitRequest = $request->all();
+
+        $healthUnit->update(
+            $healthUnitRequest
+        );
+
+        return response()->json(['messages' => 'Unidade dadastrada!.'], 201);
     }
 
     /**
@@ -113,8 +170,6 @@ class HealthUnitController extends Controller
                     200
                 )->header('Content-Type', 'text/plain');
             }
-
-
         }
 
         $healthUnit = HealthUnit::find($id);
