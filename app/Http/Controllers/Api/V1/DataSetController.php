@@ -2,222 +2,152 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Http\Controllers\Controller;
-use App\Models\BrasilIo;
-use App\Models\DataSet;
-use App\Models\HealthUnit;
-use App\Models\OccupationOfHealthUnit;
-use App\Models\User;
+use App\Models\Dataset;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use PhpParser\Node\Stmt\TryCatch;
+use Throwable;
 
-class DataSetController extends Controller
+class DatasetController extends Controller
 {
     /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
      */
-    public function index(Request $request, $source, $datasetName)
+    public function index(Request $request, $source, $system, $initial)
     {
-        if ($request->has('dates_load_data')) {
-            $year = $request->get('dates_load_data');
-            $dates = DB::table("{$year}_{$datasetName}_{$source}")->select('date')->groupBy('date')->orderBy('date', 'desc')->get();
-            $dataSet = DataSet::where(
-                [
-                    'year' => $year,
-                    'source' => $source,
-                    'name' => $datasetName,
-                ]
-            )->first();
-            $dataSet->dates = $dates;
-            return $dataSet;
-        } elseif ($request->has('data_frame')) {
-            if ($request->has('per_page')) {
-                $perPage = $request->input('per_page');
-            } else {
-                $perPage = 5;
-            }
-
-            if ($datasetName == "occupation_of_health_units") {
-                $year = $request->get('data_frame');
-                $datas = DB::table("{$year}_{$datasetName}_{$source}")
-                    ->orderBy('updated_at', 'desc')
-                    ->paginate($perPage);
-
-                foreach ($datas as $data) {
-                    $healthUnit = HealthUnit::where('cnes_code', $data->cnes_code)->first();
-                    $state = $healthUnit->state();
-                    $city = $healthUnit->city();
-
-                    $data->name = $healthUnit->alias_company_name;
-                    $data->state = $state->name;
-                    $data->city = $city->name;
-                }
-
-                return $datas;
-            }
-        } elseif ($request->has('limit')) {
+        if ($request->has('limit')) {
             $limit = $request->get('limit');
-            $dataSets = DataSet::where(
+            $datasets = Dataset::where(
                 [
                     'source' => $source,
-                    'name' => $datasetName,
+                    'system' => $system,
+                    'initial' => $initial,
                 ]
             )->limit($limit)->orderBy('year', 'desc')->get();
 
-            if ($datasetName == "occupation_of_health_units") {
-                foreach ($dataSets as $dataset) {
-                    $dataset->dates = DB::table("{$dataset->year}_{$datasetName}_{$source}")->select('date')->groupBy('date')->orderBy('date', 'desc')->get();
-                }
+            $class = Dataset::getClass($source, $system, $initial);
+            $object = new $class();
+
+            foreach ($datasets as $dataset) {
+                $dataset->total = $object->getTotal($request, $source, $system, $initial, $dataset->id);
             }
 
-            return $dataSets;
-        } else {
-            if ($request->has('per_page')) {
-                $perPage = $request->input('per_page');
-            } else {
-                $perPage = 5;
-            }
-
-            $dataSets = DataSet::where(
-                [
-                    'source' => $source,
-                    'name' => $datasetName,
-                ]
-            )->paginate($perPage);
-
-            return $dataSets;
+            return $datasets;
         }
-        return null;
-    }
 
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create(Request $request)
-    {
-        //
+        if ($request->has('per_page')) {
+            $perPage = $request->input('per_page');
+        } else {
+            $perPage = 10;
+        }
+
+        $datasets = Dataset::when($request->has('search'), function ($query) use ($request) {
+            $search = $request->query('search');
+            return $query->whereRaw(
+                "left(datasets.year::text, length('{$search}')) ilike unaccent('%{$search}%')"
+            );
+        })->where(
+            [
+                'source' => $source,
+                'system' => $system,
+                'initial' => $initial,
+            ]
+        )->orderBy('year', 'desc')->paginate($perPage);
+
+        return $datasets;
     }
 
     /**
      * Store a newly created resource in storage.
      *
-     * @param  \Illuminate\Http\Request $request
+     * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request, $source, $datasetName)
+    public function store(Request $request, $source, $system, $initial)
     {
         $user = $request->user();
 
+
         if (!Gate::authorize('is-admin', $user)) {
-            return response()->json(['error' => 'Not authorized.'], 403);
+            return $this->error('Not authorized.', 403);
         }
 
-        if ($request->has('type')) {
-            $type = $request->get('type');
-            if ($type == 'single') {
-                if ($datasetName == "occupation_of_health_units") {
-                    if (OccupationOfHealthUnit::createItem($request, $datasetName, $source, $user)) {
-                        return response()->json(
-                            [
-                                'status' => 'Success',
-                                'message' => 'Created',
-                                'data' => 'Load data',
-                                'code' => 201,
-                            ],
-                            201
-                        )->header('Content-Type', 'text/plain');
-                    } else {
-                        return response()->json(
-                            [
-                                'status' => 'Error',
-                                'message' => 'Insufficient Storage',
-                                'data' => null,
-                                'code' => 507,
-                            ],
-                            507
-                        )->header('Content-Type', 'text/plain');
-                    }
-                }
-            }
-        }
 
         $fileName = null;
         $request->validate(
             [
-                'dataset' => 'required|file',
+                'datasets' => 'required',
             ]
         );
 
-        $file = $request->file('dataset');
-        $user = $request->user();
+        /**
+         * Carga de dados com arquivo cvs ou dbf
+         **/
+        $files = $request->file('datasets');
+        foreach ($files as $file) {
+            if (is_file($file)) {
 
-        $name = uniqid(date('HisYmd'));
-        $extension = strtolower($file->getClientOriginalExtension());
-        $nameFile = "{$name}.{$extension}";
-        $path = $file->storeAs("{$source}_{$datasetName}", $nameFile);
-        if (!$path) {
-            return response()->json(
-                [
-                    'status' => 'Error',
-                    'message' => 'Insufficient Storage',
-                    'data' => null,
-                    'code' => 507,
-                ],
-                507
-            )->header('Content-Type', 'text/plain');
-        }
+                $dataSets = Dataset::where([
+                    'source' => $source,
+                    'system' => $system,
+                    'initial' => $initial,
+                ])->get();
 
-        if ($source == 'brasilio') {
-            if (BrasilIo::loadFile($path, $datasetName, $source, $extension, $user)) {
-                return response()->json(
-                    [
-                        'status' => 'Success',
-                        'message' => 'Created',
-                        'data' => 'Load data',
-                        'code' => 201,
-                    ],
-                    201
-                )->header('Content-Type', 'text/plain');
-            } else {
-                return response()->json(
-                    [
-                        'status' => 'Error',
-                        'message' => 'Insufficient Storage',
-                        'data' => null,
-                        'code' => 507,
-                    ],
-                    507
-                )->header('Content-Type', 'text/plain');
-            }
-        } elseif ($source == 'sesapi') {
-            if ($datasetName == 'occupation_of_health_units') {
-                $date = $request->get('date');
-                if (OccupationOfHealthUnit::loadFile($path, $datasetName, $source, $extension, $user, $date)) {
-                    return response()->json(
+                foreach ($dataSets as $dataSet) {
+                    Storage::delete($dataSet->file_name);
+                }
+
+                $user = $request->user();
+                $originalName = strtolower($file->getClientOriginalName());
+
+                $prefix = str_split($originalName, 2);
+                $prefix = $prefix[0];
+
+                $name = uniqid(date('HisYmd'));
+                $extension = strtolower($file->getClientOriginalExtension());
+                $nameFile = "{$name}.{$extension}";
+                $path = $file->storeAs("{$source}_{$system}_{$initial}", $nameFile);
+
+                if ($extension == 'dbc') {
+                    $blast = env('PATH_BLAST', '../tools/blast-dbf/blast-dbf');
+                    $storage = env('PATH_BLAST_STORAGE', '../storage/app/');
+                    $newPath = str_replace(".dbc", ".dbf", $path);
+                    echo exec("{$blast} {$storage}{$path} {$storage}/{$newPath}");
+                    Storage::delete($path);
+                    $extension = 'dbf';
+                    $path = $newPath;
+                }
+
+                if (!$path) {
+                    return $this->error('Insufficient Storage', 507);
+                }
+
+                $class = DataSet::getClass($source, $system, $initial);
+
+                $object = new $class();
+
+                try {
+                    $object->loadFile($request, $path, $source, $system, $initial, $extension, $user);
+                    return $this->success(
                         [
                             'status' => 'Success',
                             'message' => 'Created',
                             'data' => 'Load data',
                             'code' => 201,
                         ],
+                        null,
                         201
-                    )->header('Content-Type', 'text/plain');
-                } else {
-                    return response()->json(
-                        [
-                            'status' => 'Error',
-                            'message' => 'Insufficient Storage',
-                            'data' => null,
-                            'code' => 507,
-                        ],
-                        507
-                    )->header('Content-Type', 'text/plain');
+                    );
+                } catch (Throwable $th) {
+                    dd($th);
+                    return $th;
+                    //return $this->error($th->getMessage(), 500);
                 }
             }
         }
@@ -226,33 +156,72 @@ class DataSetController extends Controller
     /**
      * Display the specified resource.
      *
-     * @param  int $id
+     * @param  \App\Models\Dataset  $dataset
      * @return \Illuminate\Http\Response
      */
     public function show($id)
     {
-        //
+        $dataset = Dataset::find($id);
+
+        return $dataset;
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Display the specified resource.
      *
-     * @param  int $id
+     * @param  \App\Models\Dataset  $dataset
      * @return \Illuminate\Http\Response
      */
-    public function edit($id)
+    public function showYear(Request $request, $source, $system, $initial, $year)
     {
-        //
+        $dataset = Dataset::where([
+            'source' => $source,
+            'system' => $system,
+            'initial' => $initial,
+            'year' => $year,
+        ])->first();
+
+        $class = Dataset::getClass($source, $system, $initial);
+
+        $object = new $class();
+
+        $dataset->total = $object->getTotal($request, $source, $system, $initial, $dataset->id);
+
+        return $dataset;
     }
 
     /**
      * Update the specified resource in storage.
      *
-     * @param  \Illuminate\Http\Request $request
-     * @param  int                      $id
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Models\Dataset  $dataset
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $source, $datasetName, $id)
+    public function update(Request $request, $source, $system, $initial, $id)
+    {
+        $dataset = Dataset::findOrFail($id);
+
+        $user = $request->user();
+
+        if (!Gate::authorize('is-admin', $user)) {
+            return response()->json(['error' => 'Not authorized.'], 403);
+        }
+
+        if ($request->has('color')) {
+            $dataset->color = $request->get('color');
+            $dataset->save();
+        }
+
+        return $dataset;
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param  \App\Models\Dataset  $dataset
+     * @return \Illuminate\Http\Response
+     */
+    public function destroy(Request $request, $source, $system, $initial, $id)
     {
         $user = $request->user();
 
@@ -260,132 +229,58 @@ class DataSetController extends Controller
             return response()->json(['error' => 'Not authorized.'], 403);
         }
 
-        if ($request->has('type')) {
-            $type = $request->get('type');
-            if ($type == 'single') {
-                if ($datasetName == "occupation_of_health_units") {
-                    if (OccupationOfHealthUnit::updateItem($request, $datasetName, $source, $user, $id)) {
-                        return response()->json(
-                            [
-                                'status' => 'Success',
-                                'message' => 'Created',
-                                'data' => 'Load data',
-                                'code' => 201,
-                            ],
-                            201
-                        )->header('Content-Type', 'text/plain');
-                    } else {
-                        return response()->json(
-                            [
-                                'status' => 'Error',
-                                'message' => 'Insufficient Storage',
-                                'data' => null,
-                                'code' => 507,
-                            ],
-                            507
-                        )->header('Content-Type', 'text/plain');
-                    }
-                }
-            }
-        }
+        try {
+            $dataset = Dataset::find($id);
+            $year = $dataset->year;
+            $initial = $dataset->initial;
+            $system = $dataset->system;
+            $source = $dataset->source;
 
-        if ($request->has('type')) {
-            $type = $request->get('type');
-            if ($type == 'single') {
-                if ($datasetName == "occupation_of_health_units") {
-                    if (OccupationOfHealthUnit::update($request, $datasetName, $source, $user, $id)) {
-                        return response()->json(
-                            [
-                                'status' => 'Success',
-                                'message' => 'Created',
-                                'data' => 'Load data',
-                                'code' => 201,
-                            ],
-                            201
-                        )->header('Content-Type', 'text/plain');
-                    } else {
-                        return response()->json(
-                            [
-                                'status' => 'Error',
-                                'message' => 'Insufficient Storage',
-                                'data' => null,
-                                'code' => 507,
-                            ],
-                            507
-                        )->header('Content-Type', 'text/plain');
-                    }
-                }
-            }
-            $dates = DB::table("{$year}_{$datasetName}_{$source}")->select('date')->groupBy('date')->get();
-            $dataSet = DataSet::where(
-                [
-                    'year' => $year,
-                    'source' => $source,
-                    'name' => $datasetName,
-                ]
-            )->first();
-            $dataSet->dates = $dates;
-            return $dataSet;
-        }
+            $tableName = "{$year}_{$initial}_{$system}_{$source}";
 
-        $dataSet = DataSet::find($id);
-        if ($request->has('color')) {
-            $dataSet->color = $request->get('color');
-            $dataSet->save();
-        }
+            Schema::drop($tableName);
+            $dataset->delete();
 
-        if ($source == 'brasilio') {
-            if ($request->has('date')) {
-                if (BrasilIo::getDataByApi($request->get('date'), $datasetName, $source, $user)) {
-                    $dataSet->updated_at = now();
-                }
-            }
-        }
-        return $dataSet;
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  int $id
-     * @return \Illuminate\Http\Response
-     */
-    public function destroy(Request $request, User $user, $source, $datasetName, $id)
-    {
-        if (!Gate::authorize('is-admin', $user)) {
-            return response()->json(['error' => 'Not authorized.'], 403);
-        }
-
-        if ($request->has('year')) {
-            $year = $request->get('year');
-            DB::table("{$year}_{$datasetName}_{$source}")->where('id', $id)->delete();
-
-            return response()->json(
+            return $this->success(
                 [
                     'status' => 'Success',
                     'message' => 'Delete',
                     'data' => 'Delete',
                     'code' => 200,
-                ],
-                200
-            )->header('Content-Type', 'text/plain');
+                ]
+            );
+        } catch (\Throwable $th) {
+            return $this->error($th->getMessage(), 500);
         }
+    }
 
-        $dataSet = DataSet::find($id);
-        $tableName = "{$dataSet->year}_{$dataSet->name}_{$dataSet->source}";
 
-        if ($dataSet->delete()) {
-            Schema::dropIfExists($tableName);
-        }
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getSerie(Request $request, $source, $system, $initial, $id)
+    {
+        $class = DataSet::getClass($source, $system, $initial);
 
-        return response()->json(
-            [
-                'status' => 'Success',
-                'message' => 'Delete',
-                'data' => 'Delete dataset',
-                'code' => 200,
-            ],
-            200
-        )->header('Content-Type', 'text/plain');
+        $object = new $class();
+
+        return $object->getSerie($request, $id);
+    }
+
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getRange(Request $request, $source, $system, $initial, $id)
+    {
+        $class = DataSet::getClass($source, $system, $initial);
+
+        $object = new $class();
+
+        return $object->getRange($request, $id);
     }
 }

@@ -5,6 +5,10 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\Location\The\NeighborhoodZoneSeeder;
+use Database\Seeders\Location\The\NeighborhoodSeeder;
+use Database\Seeders\Location\The\NeighborhoodPopulationSeeder;
+
 class DatabaseSeeder extends Seeder
 {
     /**
@@ -14,7 +18,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run()
     {
-        
+        /*
         User::factory(1)->create(
             [
                 'name' => 'Thiago Pinto Dias',
@@ -24,17 +28,44 @@ class DatabaseSeeder extends Seeder
 
             ]
         );
-        
-        $roles = new RolesSeeder;
+
+        $roles = new RolesSeeder();
         $roles->run();
 
         $user = User::with(['roles'])->find(1);
-        $roles = Role::get(); 
+        $roles = Role::get();
         foreach ($roles as $role) {
             $user->roles()->attach($role->id);
         }
 
-        $healthUnit = new HealthUnitSeeder;
+        $healthUnit = new HealthUnitSeeder();
         $healthUnit->run();
+        */
+
+        $cidChapterSeeder = new CidChapterSeeder();
+        $cidGroupSeeder = new CidGroupSeeder();
+        $cidCategorySeeder = new CidCategorySeeder();
+        $cidSeeder = new CidSeeder();
+        $cboDatasusSeeder = new CboDatasusSeeder();
+
+        $cidChapterSeeder->run();
+        $cidGroupSeeder->run();
+        $cidCategorySeeder->run();
+        $cidSeeder->run();
+        $cboDatasusSeeder->run();
+
+
+        /**
+         * NeighborhoodZonesSeeder
+         * NeighborhoodSeeder
+         * exlusivo para dvs
+         */
+
+        $neighborhoodZoneSeeder = new NeighborhoodZoneSeeder();
+        $neighborhoodSeeder = new NeighborhoodSeeder();
+        $neighborhoodPopulationSeeder = new NeighborhoodPopulationSeeder();
+        $neighborhoodZoneSeeder->run();
+        $neighborhoodSeeder->run();
+        $neighborhoodPopulationSeeder->run();
     }
 }

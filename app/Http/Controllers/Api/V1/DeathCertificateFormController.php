@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\HealthUnit;
 use App\Models\DeathCertificateForm;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -171,7 +172,6 @@ class DeathCertificateFormController extends Controller
     {
         $request->validate([
             'start' => 'required',
-            'cnes_code' => 'required'
         ]);
 
         if ($request->end != null) {
@@ -316,7 +316,7 @@ class DeathCertificateFormController extends Controller
     public function partial_update(Request $request, $id = null)
     {
         $form = DeathCertificateForm::find($id);
-        if ($request->status == 2 ) {
+        if ($request->status == 2) {
             $form->receipt_date = null;
             $form->event_date = null;
             $form->name = null;
@@ -503,5 +503,136 @@ class DeathCertificateFormController extends Controller
             $form->status = 1;
             $form->save();
         }
+    }
+
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function exportByHealthUnit(Request $request, $cnes)
+    {
+        if (!Gate::authorize('is-staff')) {
+            return response()->json(['error' => 'Not authorized.'], 403);
+        }
+
+        $tableName = 'death_certificate_forms';
+
+        $forms = DeathCertificateForm::select(
+            'number',
+            'status',
+            'updated_at'
+        )->whereNotNull(
+            "{$tableName}.cnes_code"
+        )->when(($request->has('start') && $request->has('end')), function ($query) use ($request, $tableName) {
+
+            $start = $request->start;
+            $end = $request->end;
+
+            $query->whereBetween(
+                "{$tableName}.updated_at",
+                [$start, $end]
+            );
+        })->where(
+            "{$tableName}.cnes_code",
+            $cnes
+        )->orderBy(
+            "{$tableName}.updated_at",
+            'desc'
+        )->orderBy(
+            "{$tableName}.status"
+        )->get();
+
+        foreach ($forms as $form) {
+            if ($form->status == 2) {
+                $form->status_name = "Estoque";
+            } elseif ($form->status == 3) {
+                $form->status_name = "Utilizados";
+            } elseif ($form->status == 4) {
+                $form->status_name = "Anulados";
+            }
+        }
+
+
+
+        return $forms;
+    }
+
+
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function reportByHealthUnit(Request $request, $cnes)
+    {
+        if (!Gate::authorize('is-staff')) {
+            return response()->json(['error' => 'Not authorized.'], 403);
+        }
+
+        $healthUnit = HealthUnit::where('cnes_code', '=', $cnes)->first();
+
+
+        $tableName = 'death_certificate_forms';
+
+
+        $forms = DeathCertificateForm::select(
+            'number',
+            'status',
+            'updated_at'
+        )->whereNotNull(
+            "{$tableName}.cnes_code"
+        )->when(($request->has('start') && $request->has('end')), function ($query) use ($request, $tableName) {
+
+            $start = $request->start;
+            $end = $request->end;
+
+            $query->whereBetween(
+                "{$tableName}.updated_at",
+                [$start, $end]
+            );
+        })->where(
+            "{$tableName}.cnes_code",
+            $cnes
+        )->orderBy(
+            "{$tableName}.updated_at",
+            'desc'
+        )->orderBy(
+            "{$tableName}.status"
+        )->get();
+
+        $stock = [];
+        $used = [];
+        $nullable = [];
+
+        foreach ($forms as $form) {
+            if ($form->status == 2) {
+                $form->status_name = "Estoque";
+                $stock[] = $form;
+            } elseif ($form->status == 3) {
+                $form->status_name = "Utilizados";
+                $used[] = $form;
+            } elseif ($form->status == 4) {
+                $form->status_name = "Anulados";
+                $nullable[] = $form;
+            }
+        }
+
+
+        $today = date("m-d-Y");
+
+        return PDF::loadView(
+            'report_by_healthunit',
+            [
+                'title' => 'Declaração de óbito',
+                'healthUnit' => $healthUnit,
+                'stock' => $stock,
+                'used' => $used,
+                'nullable' => $nullable,
+                'today' => $today
+
+            ]
+        )->download('Documento relatório.pdf');
     }
 }
