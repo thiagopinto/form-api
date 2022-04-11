@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use App\models\CboDatasus;
+use App\Models\CboDatasus;
 
 class CboDatasusSeeder extends Seeder
 {
