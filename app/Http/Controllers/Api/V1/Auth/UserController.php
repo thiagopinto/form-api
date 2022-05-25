@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api\V1;
+namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -32,23 +32,14 @@ class UserController extends Controller
             $perPage = 5;
         }
 
-        if ($request->has('search')) {
-            $search = $request->get('search');
-            $users = User::with(['roles'])->where('name', 'ilike', '%' . $search . '%')->paginate($perPage);
+        if ($request->query('search')) {
+            $search = $request->query('search');
+            $users = User::with(['roles'])->where('name', 'like', '%' . $search . '%')->paginate($perPage);
         } else {
             $users = User::with(['roles'])->paginate($perPage);
         }
 
         return $users;
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
     }
 
     /**
@@ -88,17 +79,6 @@ class UserController extends Controller
      * @return \Illuminate\Http\Response
      */
     public function show($id)
-    {
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param int $id
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function edit($id)
     {
     }
 

@@ -26,7 +26,7 @@ use App\Http\Controllers\Api\V1\QueryFilterController;
 
 Route::prefix('v1')->group(
     function () {
-        include __DIR__ . '/auth_api.php';
+        include __DIR__ . '/auth.php';
         include __DIR__ . '/dataset.php';
         include __DIR__ . '/location.php';
 
