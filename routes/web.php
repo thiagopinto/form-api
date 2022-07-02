@@ -31,6 +31,10 @@ Route::get('/dashboard', function () {
 
 require __DIR__.'/auth.php'; */
 
+Route::get('/', function () {
+    return view('welcome');
+});
+
 Route::get('/receipt', [ReceiptController::class, 'index'])
     ->middleware('guest')
     ->name('receipt');
