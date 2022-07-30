@@ -1445,27 +1445,27 @@ class Dataset extends Model
     {
         $columnFilterOrRange = $request->get('column_filter_or_range');
         $termFilterOrRange = $request->get('term_filter_or_range');
-        if (count($columnFilterOrRange) == count($termFilterOrRange)) {
-            $query->where(
-                function ($query) use ($request, $columnFilterOrRange, $termFilterOrRange) {
-                    $query->when(
-                        $request->has('column_filters') &&
-                        $request->has('term_filters'),
-                        function ($query) use ($request) {
-                            $column_filter = $request->get('column_filters');
-                            $term_filters = $request->get('term_filters');
-                            return $query->orWhere(function ($query) use (
+
+        $query->where(
+            function ($query) use ($request, $columnFilterOrRange, $termFilterOrRange) {
+                $query->when(
+                    $request->has('column_filters') &&
+                    $request->has('term_filters'),
+                    function ($query) use ($request) {
+                        $column_filter = $request->get('column_filters');
+                        $term_filters = $request->get('term_filters');
+                        return $query->orWhere(function ($query) use (
+                            $column_filter,
+                            $term_filters
+                        ) {
+                            return $query->whereIn(
                                 $column_filter,
                                 $term_filters
-                            ) {
-                                return $query->whereIn(
-                                    $column_filter,
-                                    $term_filters
-                                );
-                            });
-                        }
-                    );
-
+                            );
+                        });
+                    }
+                );
+                if (count($columnFilterOrRange) == count($termFilterOrRange)) {
                     for ($i = 0; $i < count($columnFilterOrRange); $i++) {
                         $query->orWhere(
                             function ($query) use ($columnFilterOrRange, $termFilterOrRange, $i) {
@@ -1476,13 +1476,24 @@ class Dataset extends Model
                             }
                         );
                     }
-
-                    return $query;
+                } elseif (count($columnFilterOrRange) == 1 && count($termFilterOrRange) > count($columnFilterOrRange)) {
+                    for ($i = 0; $i < count($termFilterOrRange); $i++) {
+                        $query->orWhere(
+                            function ($query) use ($columnFilterOrRange, $termFilterOrRange, $i) {
+                                $query->whereBetween(
+                                    $columnFilterOrRange[0],
+                                    json_decode($termFilterOrRange[$i], true)
+                                );
+                            }
+                        );
+                    }
                 }
-            );
 
-            return $query;
-        }
+                return $query;
+            }
+        );
+
+        return $query;
     }
 
     public function filterBetween($query, $request)
